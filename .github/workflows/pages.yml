@@ -1,0 +1,48 @@
+name: Publish gh-pages branch
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+concurrency:
+  group: publish-gh-pages
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Publish built site to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./dist
+          enable_jekyll: false
+      - name: Request Pages deployment when branch publishing is configured
+        uses: actions/github-script@v7
+        with:
+          script: |
+            let site;
+            try {
+              ({ data: site } = await github.rest.repos.getPages(context.repo));
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              core.notice('Site built. Enable Pages: Deploy from a branch → gh-pages → / (root).');
+              return;
+            }
+            if (site.build_type === 'legacy' && site.source?.branch === 'gh-pages') {
+              await github.rest.repos.requestPagesBuild(context.repo);
+            } else {
+              core.notice('Set Pages source to Deploy from a branch → gh-pages → / (root).');
+            }
